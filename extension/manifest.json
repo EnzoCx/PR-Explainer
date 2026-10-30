@@ -1,0 +1,54 @@
+{
+  "manifest_version": 3,
+  "name": "__MSG_name__",
+  "version": "1.0.0",
+  "description": "__MSG_description__",
+  "default_locale": "en",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnGtNrq9u0heBfWT6djzYHkg1vbq8GPCKgzW8CCzU+NF+lbfOjlmHZ6dCty5DhObQACwUvSvrmzy0b1mDNgjXNgfz1Hsk4lQ1YVAEjI0n27yDJnkE0XsZfii5lKTLcxNi99IfG9VckxabPsdjAJld/l+qWme9Sd6J7zIGgFZqOtp8gPPvywW5nuoi/wFSw+2ODEoTqtzII9L1ItteF7BjFpgglIG6UafK5brQ0rwTRo2czKrbst8Rd+CdGD3Ve/lNPoAQMpvndQGFOusaQyLwD8h/F3HwmCW1RNilVzm2c/O05ce9sCUIHGbTnPUDRbV0raB+VZS2r29LLJUBoJx0twIDAQAB",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": [
+    "nativeMessaging",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://github.com/*"
+      ],
+      "js": [
+        "i18n.js",
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "icons/icon48.png"
+      ],
+      "matches": [
+        "https://github.com/*"
+      ]
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "PR Explainer",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png"
+    }
+  }
+}

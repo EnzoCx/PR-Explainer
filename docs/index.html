@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="en" data-lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PR Explainer – pencil notes on your pull requests</title>
+  <meta name="description" content="A browser extension that writes short handwritten notes right on the code of GitHub pull requests, using your own Claude or ChatGPT subscription.">
+  <meta property="og:title" content="PR Explainer">
+  <meta property="og:description" content="Short handwritten notes right on the code of your GitHub pull requests. Review faster, understand everything.">
+  <meta property="og:image" content="assets/screenshot.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" type="image/png" href="assets/favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --paper: #faf7f0;
+      --paper-2: #f2ede1;
+      --card: #ffffff;
+      --ink: #1c1f24;
+      --muted: #5d6470;
+      --line: #e3dccb;
+      --code-bg: #0f1216;
+      --code-line: #1b2027;
+      --code-fg: #d5dbe3;
+      --code-muted: #6b7684;
+      --add-bg: rgba(46, 160, 67, .16);
+      --del-bg: rgba(248, 81, 73, .14);
+      --orange: #f97316;
+      --green: #2f8a4c;
+      --amber: #c2610c;
+      --red: #d42a2a;
+      --blue: #2563eb;
+      --hand-green: #5fd38a;
+      --hand-amber: #f5a35c;
+      --hand-red: #ff7b72;
+      --hand-blue: #8ab4ff;
+      --hand: "Caveat", "Ink Free", "Segoe Print", cursive;
+      --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+      --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+      --radius: 18px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --paper: #121417;
+        --paper-2: #181b20;
+        --card: #1a1e24;
+        --ink: #eef1f5;
+        --muted: #9aa3ae;
+        --line: #2a3038;
+        --code-bg: #0b0d10;
+        --code-line: #161a20;
+        --green: #5fd38a;
+        --amber: #f5a35c;
+        --red: #ff7b72;
+        --blue: #8ab4ff;
+      }
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0; background: var(--paper); color: var(--ink);
+      font: 17px/1.6 var(--sans); -webkit-font-smoothing: antialiased;
+    }
+    html[data-lang="en"] [lang="fr"], html[data-lang="fr"] [lang="en"] { display: none !important; }
+    a { color: inherit; }
+    img { max-width: 100%; display: block; }
+    .wrap { width: min(1120px, 100% - 32px); margin: 0 auto; }
+    .hand { font-family: var(--hand); }
+
+    /* ---------- Nav ---------- */
+    nav { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--paper) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid transparent; transition: border-color .2s; }
+    nav.scrolled { border-color: var(--line); }
+    nav .wrap { display: flex; align-items: center; gap: 16px; height: 64px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; text-decoration: none; }
+    .brand img { width: 30px; height: 30px; }
+    nav .links { display: flex; gap: 22px; margin-left: auto; align-items: center; font-size: 15px; }
+    nav .links a { text-decoration: none; color: var(--muted); }
+    nav .links a:hover { color: var(--ink); }
+    .lang { display: flex; border: 1px solid var(--line); border-radius: 999px; padding: 2px; }
+    .lang button { border: 0; background: none; color: var(--muted); font: 600 12px var(--sans); padding: 4px 9px; border-radius: 999px; cursor: pointer; }
+    .lang button.on { background: var(--ink); color: var(--paper); }
+
+    /* ---------- Buttons ---------- */
+    .btn { display: inline-flex; align-items: center; gap: 10px; padding: 14px 22px; border-radius: 12px; font-weight: 600; text-decoration: none; transition: transform .15s, box-shadow .15s; }
+    .btn:hover { transform: translateY(-2px); }
+    .btn-main { background: var(--ink); color: var(--paper); box-shadow: 0 10px 30px rgba(0, 0, 0, .18); }
+    .btn-ghost { border: 1.5px solid var(--line); background: var(--card); }
+    .btn svg { width: 18px; height: 18px; }
+
+    /* ---------- Hero ---------- */
+    .hero { padding: 72px 0 40px; text-align: center; position: relative; }
+    .eyebrow { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); font-size: 14px; color: var(--muted); }
+    .eyebrow b { color: var(--ink); font-weight: 600; }
+    h1 { font-size: clamp(40px, 6.4vw, 76px); line-height: 1.02; letter-spacing: -.035em; margin: 22px auto 0; max-width: 900px; font-weight: 800; }
+    h1 .scribble { position: relative; white-space: nowrap; }
+    h1 .scribble svg { position: absolute; left: -2%; bottom: -.12em; width: 104%; height: .4em; overflow: visible; }
+    h1 .scribble path { fill: none; stroke: var(--orange); stroke-width: 7; stroke-linecap: round; stroke-dasharray: 600; stroke-dashoffset: 600; animation: draw 1.1s .5s ease-out forwards; }
+    .lead { font-size: clamp(18px, 2.2vw, 21px); color: var(--muted); max-width: 640px; margin: 24px auto 34px; }
+    .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .fine { margin-top: 16px; font-size: 14px; color: var(--muted); }
+    @keyframes draw { to { stroke-dashoffset: 0; } }
+
+    /* ---------- Live diff demo ---------- */
+    .demo { margin: 56px auto 0; max-width: 1000px; text-align: left; }
+    .window { background: var(--code-bg); border-radius: var(--radius); box-shadow: 0 40px 80px -30px rgba(0, 0, 0, .45), 0 0 0 1px rgba(255, 255, 255, .04); overflow: hidden; }
+    .window-bar { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--code-line); font: 13px var(--mono); color: var(--code-muted); }
+    .window-bar i { width: 11px; height: 11px; border-radius: 50%; background: #2b3138; }
+    .window-bar span { margin-left: 10px; }
+    .diff { position: relative; font: 13.5px/1.75 var(--mono); color: var(--code-fg); padding: 8px 0 64px; }
+    .row { display: grid; grid-template-columns: 44px 44px 18px 1fr; white-space: pre; }
+    .row .n { color: var(--code-muted); text-align: right; padding-right: 10px; user-select: none; }
+    .row.add { background: var(--add-bg); }
+    .row.del { background: var(--del-bg); }
+    .row .m { color: var(--code-muted); }
+    .k { color: #ff9f80; } .s { color: #a5d6ff; } .f { color: #d2a8ff; } .c { color: #6b7684; }
+    .note {
+      position: absolute; left: 62%; font-family: var(--hand); font-size: 24px; line-height: 1.05;
+      display: flex; align-items: center; gap: 10px; opacity: 0; transform: translateX(10px) rotate(var(--r, -1deg));
+      animation: appear .5s ease-out forwards;
+    }
+    .note svg { flex: none; overflow: visible; }
+    .note svg path { fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-dasharray: 300; stroke-dashoffset: 300; animation: draw .7s ease-out forwards; animation-delay: inherit; }
+    .note .num { display: inline-flex; width: 24px; height: 24px; border: 2px solid currentColor; border-radius: 50% 46% 52% 48%; align-items: center; justify-content: center; font-size: 17px; font-weight: 700; margin-right: 6px; flex: none; }
+    .note small { display: block; font-size: 19px; opacity: .8; margin-top: 2px; }
+    .n-red { color: var(--hand-red); } .n-amber { color: var(--hand-amber); } .n-green { color: var(--hand-green); }
+    @keyframes appear { to { opacity: 1; transform: translateX(0) rotate(var(--r, -1deg)); } }
+    .pill-float {
+      position: absolute; right: 18px; bottom: 16px; display: flex; align-items: center; gap: 8px;
+      background: #1c2128; border: 1px solid #30363d; border-radius: 999px; padding: 6px 14px 6px 6px;
+      font: 600 13px var(--sans); color: #e6edf3; box-shadow: 0 8px 20px rgba(0, 0, 0, .4);
+    }
+    .pill-float img { width: 24px; height: 24px; }
+    .pill-float em { font-style: normal; color: var(--hand-red); }
+
+    /* ---------- Sections ---------- */
+    section { padding: 96px 0; }
+    .kicker { font-family: var(--hand); font-size: 28px; color: var(--orange); margin: 0; }
+    h2 { font-size: clamp(30px, 4vw, 46px); letter-spacing: -.025em; line-height: 1.1; margin: 6px 0 16px; font-weight: 800; }
+    .sub { color: var(--muted); max-width: 620px; margin: 0; font-size: 18px; }
+
+    .problem { display: grid; grid-template-columns: 1.1fr 1fr; gap: 56px; align-items: center; }
+    .problem > *, .features > *, .steps > *, .privacy > * { min-width: 0; }
+    .quote { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 32px; position: relative; }
+    .quote p { margin: 0; font-size: 20px; }
+    .quote .hand { position: absolute; right: 22px; bottom: -22px; font-size: 26px; color: var(--orange); transform: rotate(-3deg); }
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 28px; }
+    .stat { background: var(--paper-2); border-radius: 14px; padding: 18px; }
+    .stat b { display: block; font-size: 30px; letter-spacing: -.02em; }
+    .stat span { color: var(--muted); font-size: 14px; }
+
+    .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 44px; }
+    .feature { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 26px; transition: transform .2s, box-shadow .2s; }
+    .feature:hover { transform: translateY(-3px); box-shadow: 0 18px 40px -20px rgba(0, 0, 0, .25); }
+    .feature .ico { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; font-size: 22px; background: var(--paper-2); margin-bottom: 16px; }
+    .feature h3 { margin: 0 0 6px; font-size: 19px; }
+    .feature p { margin: 0; color: var(--muted); font-size: 15.5px; }
+    .levels { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; font-family: var(--hand); font-size: 22px; }
+    .lv-m { color: var(--green); } .lv-l { color: var(--amber); } .lv-s { color: var(--red); }
+
+    .shot { margin-top: 44px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); box-shadow: 0 40px 80px -40px rgba(0, 0, 0, .4); }
+
+    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 44px; counter-reset: step; }
+    .step { position: relative; padding: 28px 26px 26px; border-radius: var(--radius); background: var(--card); border: 1px solid var(--line); }
+    .step::before { counter-increment: step; content: counter(step); font-family: var(--hand); font-size: 54px; line-height: 1; color: var(--orange); display: block; margin-bottom: 8px; }
+    .step h3 { margin: 0 0 6px; font-size: 19px; }
+    .step p { margin: 0; color: var(--muted); font-size: 15.5px; }
+    code { font: 14px var(--mono); background: var(--paper-2); padding: 2px 6px; border-radius: 6px; }
+
+    .flow { margin-top: 44px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; align-items: stretch; }
+    .flow div { background: var(--card); border: 1px solid var(--line); padding: 20px; text-align: center; position: relative; }
+    .flow div:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+    .flow div:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
+    .flow div + div { border-left: 0; }
+    .flow b { display: block; margin-bottom: 4px; }
+    .flow span { color: var(--muted); font-size: 14px; }
+    .flow div:not(:last-child)::after { content: '→'; position: absolute; right: -12px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; border-radius: 50%; background: var(--paper); border: 1px solid var(--line); display: grid; place-items: center; font-size: 13px; z-index: 1; }
+
+    .privacy { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px 40px; margin-top: 36px; }
+    .privacy div { display: flex; gap: 14px; }
+    .privacy .check { flex: none; width: 28px; height: 28px; border-radius: 50%; background: color-mix(in srgb, var(--green) 16%, transparent); color: var(--green); display: grid; place-items: center; font-weight: 700; }
+    .privacy p { margin: 0; color: var(--muted); font-size: 15.5px; }
+    .privacy b { color: var(--ink); display: block; }
+
+    details { border-bottom: 1px solid var(--line); padding: 18px 0; }
+    details:first-of-type { border-top: 1px solid var(--line); margin-top: 36px; }
+    summary { cursor: pointer; font-weight: 600; font-size: 18px; list-style: none; display: flex; justify-content: space-between; gap: 16px; }
+    summary::after { content: '+'; font-family: var(--hand); font-size: 30px; line-height: .8; color: var(--orange); transition: transform .2s; }
+    details[open] summary::after { transform: rotate(45deg); }
+    details p { color: var(--muted); margin: 10px 0 0; max-width: 760px; }
+
+    .final { text-align: center; background: var(--ink); color: var(--paper); border-radius: 28px; padding: 72px 24px; margin: 0 auto 80px; position: relative; overflow: hidden; }
+    .final h2 { color: var(--paper); }
+    .final p { color: color-mix(in srgb, var(--paper) 70%, transparent); max-width: 520px; margin: 0 auto 30px; }
+    .final .btn-main { background: var(--paper); color: var(--ink); }
+    .final .btn-ghost { background: transparent; border-color: color-mix(in srgb, var(--paper) 30%, transparent); color: var(--paper); }
+    .final .hand { position: absolute; font-size: 30px; color: var(--orange); opacity: .9; }
+
+    footer { border-top: 1px solid var(--line); padding: 28px 0 40px; color: var(--muted); font-size: 14px; }
+    footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+
+    .reveal { opacity: 0; transform: translateY(18px); transition: opacity .6s ease, transform .6s ease; }
+    .reveal.in { opacity: 1; transform: none; }
+
+    @media (max-width: 900px) {
+      .problem, .features, .steps, .privacy { grid-template-columns: 1fr; }
+      .flow { grid-template-columns: 1fr 1fr; gap: 12px; }
+      .flow div { border-radius: var(--radius) !important; border-left: 1px solid var(--line) !important; }
+      .flow div::after { display: none; }
+      nav .links a:not(.gh) { display: none; }
+      .note { left: auto; right: 12px; font-size: 19px; max-width: 46%; background: rgba(15, 18, 22, .92); padding: 4px 8px; border-radius: 8px; }
+      .note svg { display: none; }
+      .note small { display: none; }
+      h1 { font-size: 38px; }
+      h1 .scribble { white-space: normal; }
+      h1 .scribble svg { display: none; }
+      h1 .scribble { text-decoration: underline var(--orange) 4px; text-underline-offset: 8px; }
+      .diff { font-size: 11.5px; overflow: hidden; }
+      .row { grid-template-columns: 30px 30px 14px 1fr; }
+      section { padding: 72px 0; }
+      .stats { grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+      .stat { padding: 12px 10px; }
+      .stat b { font-size: 22px; }
+      .quote { padding: 24px 20px; }
+      .final .hand { display: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0s !important; transition: none !important; }
+      .reveal { opacity: 1; transform: none; }
+    }
+  </style>
+</head>
+<body>
+
+<nav id="nav">
+  <div class="wrap">
+    <a class="brand" href="#"><img src="assets/logo.svg" alt="">PR Explainer</a>
+    <div class="links">
+      <a href="#features"><span lang="en">Features</span><span lang="fr">Fonctions</span></a>
+      <a href="#install"><span lang="en">Install</span><span lang="fr">Installer</span></a>
+      <a href="#privacy"><span lang="en">Privacy</span><span lang="fr">Confidentialité</span></a>
+      <a class="gh js-repo" href="#">GitHub</a>
+      <div class="lang" role="group" aria-label="Language">
+        <button data-set-lang="en">EN</button><button data-set-lang="fr">FR</button>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow">✍ <span lang="en">Free & open source · <b>Claude</b> or <b>ChatGPT</b></span><span lang="fr">Gratuit et open source · <b>Claude</b> ou <b>ChatGPT</b></span></div>
+    <h1>
+      <span lang="en">Code review,<br>with <span class="scribble">notes in the margin<svg viewBox="0 0 400 20" preserveAspectRatio="none"><path d="M4 14 C80 4 160 18 240 9 S360 6 396 12"/></svg></span></span>
+      <span lang="fr">La code review,<br>avec des <span class="scribble">notes dans la marge<svg viewBox="0 0 400 20" preserveAspectRatio="none"><path d="M4 14 C80 4 160 18 240 9 S360 6 396 12"/></svg></span></span>
+    </h1>
+    <p class="lead">
+      <span lang="en">PR Explainer writes short, handwritten notes right on the code of your GitHub pull requests. You read faster, you understand everything, and you stay the reviewer.</span>
+      <span lang="fr">PR Explainer écrit des notes courtes, à la main, directement sur le code de tes pull requests GitHub. Tu lis plus vite, tu comprends tout, et c'est toujours toi qui fais la review.</span>
+    </p>
+    <div class="cta">
+      <a class="btn btn-main js-zip" href="#install">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 21h16"/></svg>
+        <span lang="en">Download for Windows</span><span lang="fr">Télécharger pour Windows</span>
+      </a>
+      <a class="btn btn-ghost js-repo" href="#">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.2-3.1-.1-.4-.5-1.6.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.3 4.7 18.3 5 18.3 5c.6 1.6.2 2.8.1 3.2.8.8 1.2 1.9 1.2 3.1 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .5Z"/></svg>
+        <span lang="en">View on GitHub</span><span lang="fr">Voir sur GitHub</span>
+      </a>
+    </div>
+    <p class="fine">
+      <span lang="en">Chrome, Edge & Brave · Uses your existing subscription · No API key</span>
+      <span lang="fr">Chrome, Edge et Brave · Utilise ton abonnement existant · Aucune clé d'API</span>
+    </p>
+
+    <!-- Animated diff with handwritten notes -->
+    <div class="demo">
+      <div class="window" aria-label="Example of a GitHub diff annotated by PR Explainer">
+        <div class="window-bar"><i></i><i></i><i></i><span>src/sync/fetchExport.js</span></div>
+        <div class="diff" id="diff">
+          <div class="row"><span class="n">21</span><span class="n">21</span><span class="m"> </span><span><span class="k">async function</span> <span class="f">pickArchive</span>(files) {</span></div>
+          <div class="row del"><span class="n">22</span><span class="n"></span><span class="m">-</span><span>  <span class="k">return</span> files.find(f =&gt; f.name.includes(<span class="s">'export'</span>));</span></div>
+          <div class="row add"><span class="n"></span><span class="n">22</span><span class="m">+</span><span>  <span class="k">const</span> FULL = <span class="s">/^export_\d{8}\.zip$/</span>;</span></div>
+          <div class="row add"><span class="n"></span><span class="n">23</span><span class="m">+</span><span>  <span class="k">return</span> files.find(f =&gt; FULL.test(f.name));</span></div>
+          <div class="row"><span class="n">23</span><span class="n">24</span><span class="m"> </span><span>}</span></div>
+          <div class="row"><span class="n">24</span><span class="n">25</span><span class="m"> </span><span></span></div>
+          <div class="row add"><span class="n"></span><span class="n">26</span><span class="m">+</span><span><span class="k">function</span> <span class="f">purgeOldCsv</span>(dir) {</span></div>
+          <div class="row add"><span class="n"></span><span class="n">27</span><span class="m">+</span><span>  <span class="k">for</span> (<span class="k">const</span> f <span class="k">of</span> fs.readdirSync(dir))</span></div>
+          <div class="row add"><span class="n"></span><span class="n">28</span><span class="m">+</span><span>    <span class="k">if</span> (f.endsWith(<span class="s">'.csv'</span>)) fs.rmSync(path.join(dir, f));</span></div>
+          <div class="row add"><span class="n"></span><span class="n">29</span><span class="m">+</span><span>}</span></div>
+          <div class="row"><span class="n">25</span><span class="n">30</span><span class="m"> </span><span></span></div>
+          <div class="row del"><span class="n">26</span><span class="n"></span><span class="m">-</span><span><span class="k">const</span> extract = require(<span class="s">'extract-zip'</span>);</span></div>
+          <div class="row add"><span class="n"></span><span class="n">31</span><span class="m">+</span><span><span class="k">const</span> { unzip } = require(<span class="s">'../utils/unzip'</span>);</span></div>
+
+          <div class="note n-amber" data-rows="2-3" style="--r: -1.5deg; animation-delay: .9s"><svg></svg>
+            <div><span class="num">1</span><span lang="en">Only keeps complete archives</span><span lang="fr">Ne garde que les archives complètes</span>
+              <small><span lang="en">partial zips are now ignored</span><span lang="fr">les zip partiels sont ignorés</span></small></div>
+          </div>
+          <div class="note n-red" data-rows="6-9" style="--r: 1deg; animation-delay: 1.6s"><svg></svg>
+            <div><span class="num">2</span><span lang="en">Deletes old CSV files!</span><span lang="fr">Supprime les vieux CSV !</span>
+              <small><span lang="en">→ only in its own folder?</span><span lang="fr">→ seulement dans son dossier ?</span></small></div>
+          </div>
+          <div class="note n-green" data-rows="11-12" style="--r: -1deg; animation-delay: 2.3s"><svg></svg>
+            <div><span class="num">3</span><span lang="en">Just swaps the zip library</span><span lang="fr">Change juste de lib zip</span></div>
+          </div>
+          <div class="pill-float"><img src="assets/logo.svg" alt="">3 notes · <em><span lang="en">1 to check</span><span lang="fr">1 à vérifier</span></em></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap problem">
+    <div class="reveal">
+      <p class="kicker"><span lang="en">the new bottleneck</span><span lang="fr">le nouveau goulot</span></p>
+      <h2><span lang="en">Writing code got fast. Reviewing it didn't.</span><span lang="fr">Écrire du code est devenu rapide. Le relire, non.</span></h2>
+      <p class="sub">
+        <span lang="en">With AI, pull requests grow bigger and come faster. Someone still has to understand them before they ship. PR Explainer doesn't review for you: it gives you a guided read, so you stay in control of your codebase.</span>
+        <span lang="fr">Avec l'IA, les pull requests sont plus grosses et arrivent plus vite. Quelqu'un doit quand même les comprendre avant la mise en production. PR Explainer ne fait pas la review à ta place : il te guide dans la lecture, pour que tu restes maître de ton code.</span>
+      </p>
+    </div>
+    <div class="quote reveal">
+      <p>
+        <span lang="en">Instead of scrolling the diff file by file, read the notes in order and only stop on the red ones.</span>
+        <span lang="fr">Au lieu de scroller le diff fichier par fichier, lis les notes dans l'ordre et arrête-toi seulement sur les rouges.</span>
+      </p>
+      <div class="stats">
+        <div class="stat"><b>3–8</b><span lang="en">words per note</span><span lang="fr">mots par note</span></div>
+        <div class="stat"><b>≈1 min</b><span lang="en">first analysis</span><span lang="fr">1re analyse</span></div>
+        <div class="stat"><b>0 €</b><span lang="en">on top of your plan</span><span lang="fr">en plus de ton abonnement</span></div>
+      </div>
+      <span class="hand"><span lang="en">that's the idea ↑</span><span lang="fr">c'est l'idée ↑</span></span>
+    </div>
+  </div>
+</section>
+
+<section id="features" style="background: var(--paper-2)">
+  <div class="wrap">
+    <div class="reveal">
+      <p class="kicker"><span lang="en">what it does</span><span lang="fr">ce qu'il fait</span></p>
+      <h2><span lang="en">Everything happens on the diff</span><span lang="fr">Tout se passe sur le diff</span></h2>
+      <p class="sub"><span lang="en">No new tool to learn. Open the “Files changed” tab like you always do.</span><span lang="fr">Aucun nouvel outil à apprendre. Ouvre l'onglet « Files changed » comme d'habitude.</span></p>
+    </div>
+    <div class="features">
+      <div class="feature reveal">
+        <div class="ico">✍️</div>
+        <h3><span lang="en">Margin notes</span><span lang="fr">Notes dans la marge</span></h3>
+        <p><span lang="en">Every changed block gets a hand-drawn brace and a few words. Click a note to see why it changed.</span><span lang="fr">Chaque bloc modifié reçoit une accolade tracée à la main et quelques mots. Un clic montre le pourquoi.</span></p>
+      </div>
+      <div class="feature reveal">
+        <div class="ico">🚦</div>
+        <h3><span lang="en">Where to look</span><span lang="fr">Où regarder</span></h3>
+        <p><span lang="en">Each note has a colour, so your attention goes where it matters.</span><span lang="fr">Chaque note a une couleur, pour mettre ton attention là où ça compte.</span></p>
+        <div class="levels">
+          <div class="lv-m"><span lang="en">mechanical — skim it</span><span lang="fr">mécanique — survole</span></div>
+          <div class="lv-l"><span lang="en">logic — read it</span><span lang="fr">logique — lis</span></div>
+          <div class="lv-s"><span lang="en">sensitive — check it!</span><span lang="fr">sensible — vérifie !</span></div>
+        </div>
+      </div>
+      <div class="feature reveal">
+        <div class="ico">🧭</div>
+        <h3><span lang="en">Reading order</span><span lang="fr">Ordre de lecture</span></h3>
+        <p><span lang="en">Notes are ordered like a story: the core of the change first, then where it's used, then the tests.</span><span lang="fr">Les notes suivent un fil : le cœur du changement d'abord, puis ses usages, puis les tests.</span></p>
+      </div>
+      <div class="feature reveal">
+        <div class="ico">✏️</div>
+        <h3><span lang="en">Circle and ask</span><span lang="fr">Entoure et demande</span></h3>
+        <p><span lang="en">Circle some code, or draw an arrow between two places, and ask. The answer is written right next to it.</span><span lang="fr">Entoure du code, ou trace une flèche entre deux endroits, et pose ta question. La réponse s'écrit juste à côté.</span></p>
+      </div>
+      <div class="feature reveal">
+        <div class="ico">📁</div>
+        <h3><span lang="en">Knows your project</span><span lang="fr">Connaît ton projet</span></h3>
+        <p><span lang="en">If the repo is cloned on your machine, the AI reads the surrounding code to explain the impact. Found automatically.</span><span lang="fr">Si le dépôt est cloné sur ta machine, l'IA lit le code autour pour expliquer l'impact. Détecté tout seul.</span></p>
+      </div>
+      <div class="feature reveal">
+        <div class="ico">🔑</div>
+        <h3><span lang="en">Your subscription</span><span lang="fr">Ton abonnement</span></h3>
+        <p><span lang="en">Runs on Claude (Pro, Max, Team) or ChatGPT (Plus, Pro, Team) through their official tools. English or French.</span><span lang="fr">Fonctionne avec Claude (Pro, Max, Team) ou ChatGPT (Plus, Pro, Team) via leurs outils officiels. En français ou en anglais.</span></p>
+      </div>
+    </div>
+    <div class="shot reveal"><img src="assets/screenshot.png" alt="PR Explainer notes on a real GitHub pull request" loading="lazy"></div>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <div class="reveal">
+      <p class="kicker"><span lang="en">two minutes</span><span lang="fr">deux minutes</span></p>
+      <h2><span lang="en">Install in 3 steps</span><span lang="fr">Installation en 3 étapes</span></h2>
+      <p class="sub"><span lang="en">The installer checks everything, installs what's missing (after asking) and signs you in.</span><span lang="fr">L'installeur vérifie tout, installe ce qui manque (en demandant d'abord) et fait les connexions.</span></p>
+    </div>
+    <div class="steps">
+      <div class="step reveal">
+        <h3><span lang="en">Download</span><span lang="fr">Télécharge</span></h3>
+        <p><span lang="en"><a class="js-zip" href="#">Download the ZIP</a> and extract it to a folder you'll keep, e.g. <code>C:\Tools</code>.</span><span lang="fr"><a class="js-zip" href="#">Télécharge le ZIP</a> et extrais-le dans un dossier que tu gardes, ex. <code>C:\Outils</code>.</span></p>
+      </div>
+      <div class="step reveal">
+        <h3><span lang="en">Double-click Install.cmd</span><span lang="fr">Double-clique sur Install.cmd</span></h3>
+        <p><span lang="en">Connects GitHub and your Claude or ChatGPT account in the browser. Already have Codex or Claude Code? It's reused.</span><span lang="fr">Connecte GitHub et ton compte Claude ou ChatGPT dans le navigateur. Tu as déjà Codex ou Claude Code ? Il est réutilisé.</span></p>
+      </div>
+      <div class="step reveal">
+        <h3><span lang="en">Load the extension</span><span lang="fr">Charge l'extension</span></h3>
+        <p><span lang="en">On the extensions page that opens: <b>Developer mode</b> → <b>Load unpacked</b> → paste the path (already copied).</span><span lang="fr">Sur la page des extensions qui s'ouvre : <b>Mode développeur</b> → <b>Charger l'extension non empaquetée</b> → colle le chemin (déjà copié).</span></p>
+      </div>
+    </div>
+
+    <div class="flow reveal">
+      <div><b>GitHub</b><span lang="en">notes on the page</span><span lang="fr">notes sur la page</span></div>
+      <div><b>Extension</b><span lang="en">draws, nothing else</span><span lang="fr">dessine, rien d'autre</span></div>
+      <div><b><span lang="en">Local helper</span><span lang="fr">Programme local</span></b><span lang="en">reads the PR with gh</span><span lang="fr">lit la PR avec gh</span></div>
+      <div><b>Claude / ChatGPT</b><span lang="en">read-only, on your machine</span><span lang="fr">en lecture seule, sur ta machine</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="privacy" style="background: var(--paper-2)">
+  <div class="wrap">
+    <div class="reveal">
+      <p class="kicker"><span lang="en">no surprises</span><span lang="fr">pas de surprise</span></p>
+      <h2><span lang="en">Private by design</span><span lang="fr">Confidentiel par conception</span></h2>
+    </div>
+    <div class="privacy">
+      <div class="reveal"><span class="check">✓</span><p><b><span lang="en">No server of ours</span><span lang="fr">Aucun serveur à nous</span></b><span lang="en">Your code only goes to GitHub and to your AI provider, exactly as if you used their tools yourself.</span><span lang="fr">Ton code ne va qu'à GitHub et à ton fournisseur d'IA, exactement comme si tu utilisais leurs outils toi-même.</span></p></div>
+      <div class="reveal"><span class="check">✓</span><p><b><span lang="en">Read-only AI</span><span lang="fr">IA en lecture seule</span></b><span lang="en">Claude Code runs with Read/Grep/Glob only; Codex runs in its read-only sandbox. Nothing gets modified.</span><span lang="fr">Claude Code tourne avec Read/Grep/Glob uniquement ; Codex dans son bac à sable en lecture seule. Rien n'est modifié.</span></p></div>
+      <div class="reveal"><span class="check">✓</span><p><b><span lang="en">Locked-down helper</span><span lang="fr">Programme local verrouillé</span></b><span lang="en">Only the extension can call it, every request is validated, and page content never reaches a command line.</span><span lang="fr">Seule l'extension peut l'appeler, chaque requête est validée, et le contenu de la page ne passe jamais en ligne de commande.</span></p></div>
+      <div class="reveal"><span class="check">✓</span><p><b><span lang="en">You choose the context</span><span lang="fr">Tu choisis le contexte</span></b><span lang="en">Turn off project reading to share the diff only. Clear saved analyses anytime.</span><span lang="fr">Coupe la lecture du projet pour ne partager que le diff. Efface les analyses enregistrées quand tu veux.</span></p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="reveal">
+      <p class="kicker">FAQ</p>
+      <h2><span lang="en">Questions</span><span lang="fr">Questions</span></h2>
+    </div>
+    <details class="reveal">
+      <summary><span lang="en">Is it really free?</span><span lang="fr">C'est vraiment gratuit ?</span></summary>
+      <p><span lang="en">Yes. PR Explainer is open source (MIT). It uses the Claude or ChatGPT subscription you already pay for, through their official command-line tools, so there's no API key and no extra bill.</span><span lang="fr">Oui. PR Explainer est open source (MIT). Il utilise l'abonnement Claude ou ChatGPT que tu paies déjà, via leurs outils officiels en ligne de commande : pas de clé d'API, pas de facture en plus.</span></p>
+    </details>
+    <details class="reveal">
+      <summary><span lang="en">Does it replace code review?</span><span lang="fr">Ça remplace la code review ?</span></summary>
+      <p><span lang="en">No, and that's the point. It doesn't approve or comment for you: it helps you understand the change quickly, so your review is faster and better informed.</span><span lang="fr">Non, et c'est voulu. Il n'approuve rien et ne commente pas à ta place : il t'aide à comprendre vite le changement, pour une review plus rapide et mieux informée.</span></p>
+    </details>
+    <details class="reveal">
+      <summary><span lang="en">Why do I need to run an installer?</span><span lang="fr">Pourquoi faut-il lancer un installeur ?</span></summary>
+      <p><span lang="en">Browsers don't let extensions run programs on your computer. A small local helper does that part (reading the PR, starting Claude or Codex), and the browser only lets it talk to this extension. The installer sets it up once.</span><span lang="fr">Les navigateurs interdisent aux extensions de lancer des programmes sur ton ordinateur. Un petit programme local s'en charge (lire la PR, lancer Claude ou Codex), et le navigateur ne le laisse parler qu'à cette extension. L'installeur le met en place une fois.</span></p>
+    </details>
+    <details class="reveal">
+      <summary><span lang="en">Does it work with private repositories?</span><span lang="fr">Ça marche avec les dépôts privés ?</span></summary>
+      <p><span lang="en">Yes: PR Explainer reads pull requests through your own GitHub login, so you see exactly what you already have access to.</span><span lang="fr">Oui : PR Explainer lit les pull requests avec ta propre connexion GitHub, tu vois donc exactement ce à quoi tu as déjà accès.</span></p>
+    </details>
+    <details class="reveal">
+      <summary><span lang="en">Mac or Linux?</span><span lang="fr">Mac ou Linux ?</span></summary>
+      <p><span lang="en">The extension and the helper are cross-platform, but the one-click installer is Windows-only for now. Contributions welcome!</span><span lang="fr">L'extension et le programme local sont multiplateformes, mais l'installeur en un clic n'existe que pour Windows pour l'instant. Les contributions sont bienvenues !</span></p>
+    </details>
+  </div>
+</section>
+
+<div class="wrap">
+  <div class="final reveal">
+    <span class="hand" style="left: 6%; top: 18%; transform: rotate(-8deg)"><span lang="en">less scrolling</span><span lang="fr">moins de scroll</span></span>
+    <span class="hand" style="right: 7%; bottom: 20%; transform: rotate(6deg)"><span lang="en">more understanding</span><span lang="fr">plus de compréhension</span></span>
+    <h2><span lang="en">Review like you wrote it.</span><span lang="fr">Relis comme si tu l'avais écrit.</span></h2>
+    <p><span lang="en">Free, open source, and running on the subscription you already have.</span><span lang="fr">Gratuit, open source, et sur l'abonnement que tu as déjà.</span></p>
+    <div class="cta">
+      <a class="btn btn-main js-zip" href="#install"><span lang="en">Download for Windows</span><span lang="fr">Télécharger pour Windows</span></a>
+      <a class="btn btn-ghost js-repo" href="#"><span lang="en">Star on GitHub</span><span lang="fr">Étoile sur GitHub</span></a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>PR Explainer · <span lang="en">MIT license</span><span lang="fr">licence MIT</span></span>
+    <span><span lang="en">Not affiliated with GitHub, Anthropic or OpenAI.</span><span lang="fr">Non affilié à GitHub, Anthropic ou OpenAI.</span></span>
+  </div>
+</footer>
+
+<script>
+  // On GitHub Pages (owner.github.io/repo), point the links to the repository and its ZIP.
+  (function () {
+    var owner = location.hostname.endsWith('.github.io') ? location.hostname.split('.')[0] : '';
+    var repo = location.pathname.split('/').filter(Boolean)[0] || '';
+    if (owner && repo) {
+      var url = 'https://github.com/' + owner + '/' + repo;
+      document.querySelectorAll('.js-repo').forEach(function (a) { a.href = url; });
+      document.querySelectorAll('.js-zip').forEach(function (a) { a.href = url + '/archive/refs/heads/main.zip'; });
+    }
+  })();
+
+  // Language: saved choice, else the browser language.
+  (function () {
+    var saved = null;
+    try { saved = localStorage.getItem('prx-lang'); } catch (e) {}
+    function set(lang) {
+      document.documentElement.dataset.lang = lang;
+      document.documentElement.lang = lang;
+      document.querySelectorAll('[data-set-lang]').forEach(function (b) { b.classList.toggle('on', b.dataset.setLang === lang); });
+      try { localStorage.setItem('prx-lang', lang); } catch (e) {}
+    }
+    set(saved || ((navigator.language || 'en').toLowerCase().indexOf('fr') === 0 ? 'fr' : 'en'));
+    document.querySelectorAll('[data-set-lang]').forEach(function (b) { b.addEventListener('click', function () { set(b.dataset.setLang); }); });
+  })();
+
+  // Demo: place each handwritten note and its brace next to the rows it explains.
+  (function () {
+    function brace(h) {
+      var m = h / 2;
+      return 'M2 2 C9 2 7 ' + (m * .45) + ' 8 ' + (m - 5) + ' C8.5 ' + (m - 2) + ' 10 ' + m + ' 13 ' + m +
+        ' M13 ' + m + ' C10 ' + m + ' 8.5 ' + (m + 2) + ' 8 ' + (m + 5) + ' C7 ' + (m + m * .55) + ' 9 ' + (h - 2) + ' 2 ' + (h - 2);
+    }
+    function layout() {
+      var rows = document.querySelectorAll('#diff .row');
+      document.querySelectorAll('#diff .note').forEach(function (note) {
+        var r = note.dataset.rows.split('-').map(Number);
+        var top = rows[r[0]].offsetTop, bottom = rows[r[1]].offsetTop + rows[r[1]].offsetHeight;
+        var h = bottom - top - 4;
+        note.querySelector('svg').outerHTML = '<svg width="14" height="' + h + '" viewBox="0 0 14 ' + h + '"><path d="' + brace(h) + '"/></svg>';
+        note.style.top = (top + 2) + 'px';
+      });
+    }
+    layout();
+    addEventListener('resize', layout);
+    document.fonts && document.fonts.ready.then(layout);
+  })();
+
+  // Nav border on scroll and reveal-on-scroll.
+  (function () {
+    var nav = document.getElementById('nav');
+    addEventListener('scroll', function () { nav.classList.toggle('scrolled', scrollY > 8); }, { passive: true });
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+    }, { threshold: .12 });
+    document.querySelectorAll('.reveal').forEach(function (el) { io.observe(el); });
+  })();
+</script>
+</body>
+</html>
